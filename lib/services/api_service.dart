@@ -5,7 +5,7 @@ import '../models/budget.dart';
 
 /// API Service for communicating with the FastAPI backend
 /// Base URL for local testing
-const String baseUrl = 'http://127.0.0.1:8000';
+const String baseUrl = 'https://expense-tracker-backend-zyj8.onrender.com';
 
 class ApiService {
   final http.Client _client;
