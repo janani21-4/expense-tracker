@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:csv/csv.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:universal_html/html.dart' as html;
 import '../models/expense.dart';
 import '../services/expense_service.dart';
 import '../widgets/expense_card.dart';
@@ -39,39 +41,38 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadExpenses() async {
-    setState(() {
-      _isLoading = true;
-    });
+  setState(() {
+    _isLoading = true;
+  });
 
-    final allExpenses = await _expenseService.getExpenses();
-    
-    // Filter expenses by selected month
-    final monthExpenses = allExpenses.where((expense) {
-      return expense.date.year == _selectedMonth.year &&
-          expense.date.month == _selectedMonth.month;
-    }).toList();
+  final allExpenses = await _expenseService.getExpenses();
 
-    final monthTotal = monthExpenses.fold<double>(
-      0.0,
-      (sum, expense) => sum + expense.amount,
-    );
+  // Filter expenses by selected month
+  final monthExpenses = allExpenses.where((expense) {
+    return expense.date.year == _selectedMonth.year &&
+        expense.date.month == _selectedMonth.month;
+  }).toList();
 
-    // Load budget for selected month
-    final budget = await _expenseService.getBudget(
-      _selectedMonth.year,
-      _selectedMonth.month,
-    );
+  final monthTotal = monthExpenses.fold<double>(
+    0.0,
+    (sum, expense) => sum + expense.amount,
+  );
 
-    setState(() {
-      _expenses = monthExpenses;
-      _filteredExpenses = monthExpenses;
-      _totalAmount = monthTotal;
-      _monthlyBudget = budget ?? 0.0;
-      _isLoading = false;
-    });
-  }
+  final budget = await _expenseService.getBudget(
+    _selectedMonth.year,
+    _selectedMonth.month,
+  );
 
-  Future<void> _deleteExpense(String expenseId) async {
+  setState(() {
+    _expenses = monthExpenses;
+    _filteredExpenses = monthExpenses;
+    _totalAmount = monthTotal;
+    _monthlyBudget = budget ?? 0.0;
+    _isLoading = false;
+  });
+}
+
+  Future<void> _deleteExpense(int expenseId) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -109,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _filteredExpenses = _expenses.where((expense) {
         final matchesSearch = _searchQuery.isEmpty ||
             expense.category.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-            (expense.description?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false) ||
+            (expense.notes?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false) ||
             expense.amount.toString().contains(_searchQuery);
         
         final matchesCategory = _selectedCategoryFilter == 'All' ||
@@ -199,27 +200,29 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _navigateToAddExpense([Expense? expense]) async {
-    final isEdit = expense != null;
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => AddExpenseScreen(expense: expense)),
+ void _navigateToAddExpense([Expense? expense]) async {
+  final isEdit = expense != null;
+
+  final result = await Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => AddExpenseScreen(expense: expense),
+    ),
+  );
+
+  if (!mounted) return;
+
+  if (result == true) {
+    await _loadExpenses();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(isEdit ? 'Expense updated' : 'Expense added'),
+        duration: const Duration(seconds: 2),
+      ),
     );
-    
-    if (result == true && mounted) {
-      await _loadExpenses();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(isEdit ? 'Expense updated' : 'Expense added'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } else if (mounted) {
-      await _loadExpenses();
-    }
   }
+}
 
   Future<void> _showDateRangePicker() async {
     final picked = await showDateRangePicker(
@@ -258,31 +261,51 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final rows = [
-        ['Title', 'Category', 'Amount', 'Date', 'Description'],
+        ['Title', 'Category', 'Amount', 'Date', 'Notes'],
         ..._filteredExpenses.map((expense) => [
           expense.title,
           expense.category,
           expense.amount.toString(),
           DateFormat('MMM dd, yyyy').format(expense.date),
-          expense.description ?? '',
+          expense.notes ?? '',
         ]),
       ];
 
       final csvData = const ListToCsvConverter().convert(rows);
       final monthName = DateFormat('MMMM_yyyy').format(_selectedMonth);
       final fileName = 'expenses_$monthName.csv';
-      
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/$fileName');
-      await file.writeAsString(csvData);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Exported to ${file.path}'),
-            duration: const Duration(seconds: 3),
-          ),
-        );
+      if (kIsWeb) {
+        // Web: Use universal_html for download
+        final blob = html.Blob([csvData], 'text/csv;charset=utf-8;');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        final anchor = html.AnchorElement(href: url)
+          ..setAttribute('download', fileName)
+          ..click();
+        html.Url.revokeObjectUrl(url);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('CSV downloaded'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      } else {
+        // Desktop/Mobile: Use path_provider
+        final directory = await getApplicationDocumentsDirectory();
+        final file = File('${directory.path}/$fileName');
+        await file.writeAsString(csvData);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Exported to ${file.path}'),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {

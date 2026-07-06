@@ -32,7 +32,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       _amountController.text = widget.expense!.amount.toString();
       _selectedCategory = widget.expense!.category;
       _selectedDate = widget.expense!.date;
-      _descriptionController.text = widget.expense!.description ?? '';
+      _descriptionController.text = widget.expense!.notes ?? '';
     }
   }
 
@@ -65,12 +65,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     }
 
     final expense = Expense(
-      id: _isEditMode ? widget.expense!.id : DateTime.now().millisecondsSinceEpoch.toString(),
+      id: _isEditMode ? widget.expense!.id : 0,
       title: _titleController.text.trim(),
       amount: double.parse(_amountController.text.trim()),
       category: _selectedCategory,
       date: _selectedDate,
-      description: _descriptionController.text.trim().isEmpty
+      notes: _descriptionController.text.trim().isEmpty
           ? null
           : _descriptionController.text.trim(),
     );
@@ -174,7 +174,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               TextFormField(
                 controller: _descriptionController,
                 decoration: const InputDecoration(
-                  labelText: 'Description (Optional)',
+                  labelText: 'Notes (Optional)',
                   hintText: 'Add any additional details',
                   prefixIcon: Icon(Icons.description),
                   border: OutlineInputBorder(),
